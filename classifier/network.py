@@ -1,16 +1,19 @@
 import random 
+import json
+import math
 
 class Node:
     def __init__(self, input_size: int):
-        self.weights = [(random.random() * -1 if random.random() > 0.5 else 1) for _ in range(input_size)]
-        self.bias = random.random() * -1 if random.random() > 0.5 else 1
+        limit = math.sqrt(2.0 / input_size) if input_size > 0 else 1.0
+        self.weights = [random.uniform(-limit, limit) for _ in range(input_size)]
+        self.bias = 0.0
         self.last_inputs = []
         self.pre_activation = 0
         self.delta = 0
         
     def activation(self, input: float) -> float:
         # ReLU
-        return max(0, input)
+        return input if input > 0 else 0.01 * input
 
     def activate(self, inputs: list) -> float:
         out = sum(w * i for w, i in zip(self.weights, inputs)) + self.bias
@@ -19,14 +22,14 @@ class Node:
         return self.activation(out)
 
 def relu_derivative(z: float):
-    return 1 if z > 0 else 0
+    return 1 if z > 0 else 0.01
 
 class Network:
     """
     I guess the key thing to note is that each hidden layer node takes in the outputs of every node from the previous layer as its inputs.
     The first number in layers_def is basically just used as the input size definition.  
     """
-    learning_rate = 0.1
+    learning_rate = 0.001
 
     # The first and last layers in layers_def are the input and output.
     # [2, 4, 2] would represent a network with 2 input nodes, 4 hidden layer nodes, and 2 output nodes 
@@ -49,7 +52,7 @@ class Network:
     def calculate_loss(expected: list[float], actual: list[float]) -> float:
         # Mean Squared Error
         n = len(expected)
-        (sum((a - e)**2 for a, e in zip(actual, expected))) * 1/n
+        return (sum((a - e)**2 for a, e in zip(actual, expected))) * 1/n
     
     def backprop(self, expected: list[float], actual: list[float]):
         """
@@ -129,6 +132,26 @@ class Network:
                     node.weights[i] -= self.learning_rate * node.delta * node.last_inputs[i]
                 node.bias -= self.learning_rate * node.delta
         
-    def train(self, iterations: int):
-        for i in range(iterations):
-            pass
+    def train(self, inputs: list[list[float]], expected: list[list[float]]):
+        training_results = []
+        n = len(inputs)
+        for i in range(n):
+            result = self.forward_pass(inputs[i])
+            loss = Network.calculate_loss(expected[i], result)
+            training_results.append({"loss": loss, "result": result, "expected": expected[i]})
+            self.backprop(expected=expected[i], actual=result)
+            print(f'Completed input {i}/{n}')
+        
+        # Save weights/biases and training results to json file
+        network_record = []
+        for layer in self.layers:
+            nodes_in_layer = [{"weights": node.weights, "bias": node.bias} for node in layer]
+            network_record.append(nodes_in_layer)
+        
+        with open("classifier/results/training_results.json", "w", encoding="utf-8") as tr:
+            json.dump(training_results, tr, indent=4)
+        
+        with open("classifier/results/network_record.json", "w", encoding="utf-8") as mr:
+            json.dump(network_record, mr, indent=4)
+        
+        
