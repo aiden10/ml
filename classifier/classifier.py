@@ -34,8 +34,7 @@ if __name__ == "__main__":
 
     # Input is list of size n where n is amount of pixels per image
     # Output is 10 because there are 10 possible digits an image can be
-    # Not sure how many hidden layers there should be so I'll just try a layer of 10 for now
-    layers_definition = [len(training_images[0]), 10, 10]
+    layers_definition = [len(training_images[0]), 32, 32, 32, 32, 32, 10]
 
     formatted_labels = []
     for label in training_labels:
@@ -46,4 +45,4 @@ if __name__ == "__main__":
     formatted_images = [[pixel / 255.0 for pixel in image] for image in training_images]
         
     nn = Network(layers_definition)
-    nn.train(inputs=formatted_images, expected=formatted_labels)
+    nn.train(epochs=5, inputs=formatted_images, expected=formatted_labels)

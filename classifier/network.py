@@ -145,25 +145,26 @@ class Network:
                     node.weights[i] -= self.learning_rate * node.delta * node.last_inputs[i]
                 node.bias -= self.learning_rate * node.delta
         
-    def train(self, inputs: list[list[float]], expected: list[list[float]]):
+    def train(self, epochs: int, inputs: list[list[float]], expected: list[list[float]]):
         training_results = []
         correct = 0
         incorrect = 0
         
         n = len(inputs)
-        for i in range(n):
-            result = self.forward_pass(inputs[i])
-            loss = Network.calculate_loss(expected[i], result)
-            training_results.append({"loss": loss, "result": result, "expected": expected[i]})
-            self.backprop(expected=expected[i], actual=result)
-            predicted_label = result.index(max(result))
-            expected_label = expected[i].index(max(expected[i]))
-            
-            if predicted_label == expected_label: correct += 1
-            else: incorrect += 1
+        for epoch in range(epochs):
+            for i in range(n):
+                result = self.forward_pass(inputs[i])
+                loss = Network.calculate_loss(expected[i], result)
+                training_results.append({"loss": loss, "result": result, "expected": expected[i]})
+                self.backprop(expected=expected[i], actual=result)
+                predicted_label = result.index(max(result))
+                expected_label = expected[i].index(max(expected[i]))
                 
-            print(f'Completed input {i}/{n}')
-        
+                if predicted_label == expected_label: correct += 1
+                else: incorrect += 1
+                    
+            print(f'epoch: {epoch+1}/{epochs}')
+            
         # Save weights/biases and training results to json file
         network_record = []
         for layer in self.layers:
