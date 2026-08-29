@@ -172,10 +172,10 @@ class Network:
             network_record.append(nodes_in_layer)
         
         with open("classifier/results/training_results.json", "w", encoding="utf-8") as tr:
-            json.dump(training_results, tr, indent=4)
+            json.dump(training_results, tr)
         
         with open("classifier/results/network_record.json", "w", encoding="utf-8") as mr:
-            json.dump(network_record, mr, indent=4)
+            json.dump(network_record, mr)
         
         print(f"results: {correct}/{correct + incorrect}")
         print(f"accuracy: {round(correct/(correct + incorrect), 2) * 100}%")
