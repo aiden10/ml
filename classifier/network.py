@@ -3,10 +3,10 @@ import json
 import math
 
 class Node:
-    def __init__(self, input_size: int):
+    def __init__(self, input_size: int = 0, weights: list[float] = [], bias: float = 0.0):
         limit = math.sqrt(2.0 / input_size) if input_size > 0 else 1.0
-        self.weights = [random.uniform(-limit, limit) for _ in range(input_size)]
-        self.bias = 0.0
+        self.weights = [random.uniform(-limit, limit) for _ in range(input_size)] if not weights else weights
+        self.bias = 0.0 if not bias else bias
         self.last_inputs = []
         self.pre_activation = 0
         self.delta = 0
@@ -33,12 +33,25 @@ class Network:
 
     # The first and last layers in layers_def are the input and output.
     # [2, 4, 2] would represent a network with 2 input nodes, 4 hidden layer nodes, and 2 output nodes 
-    def __init__(self, layers_def: list[int]):
+    def __init__(self, layers_def: list[int] = [], load_path: str = ""):
         self.layers = []
-        for i in range(1, len(layers_def)):
-            layer = [Node(layers_def[i - 1]) for _ in range(layers_def[i])]
-            self.layers.append(layer)
+        if not load_path:
+            for i in range(1, len(layers_def)):
+                layer = [Node(layers_def[i - 1]) for _ in range(layers_def[i])]
+                self.layers.append(layer)
+            return
 
+        saved_layers = []
+        with open(load_path, "r", encoding="utf-8") as f:
+            saved_layers = json.load(f)
+        
+        for layer in saved_layers:
+            nodes = []
+            for node_data in layer:
+                nodes.append(Node(input_size=0, weights=node_data["weights"], bias=node_data["bias"]))
+            
+            self.layers.append(nodes)
+        
     def forward_pass(self, inputs: list[float]):
         current_input = inputs
         for layer in self.layers:
@@ -145,10 +158,9 @@ class Network:
             self.backprop(expected=expected[i], actual=result)
             predicted_label = result.index(max(result))
             expected_label = expected[i].index(max(expected[i]))
-            if predicted_label == expected_label:
-                correct += 1
-            else:
-                incorrect += 1
+            
+            if predicted_label == expected_label: correct += 1
+            else: incorrect += 1
                 
             print(f'Completed input {i}/{n}')
         
@@ -165,4 +177,4 @@ class Network:
             json.dump(network_record, mr, indent=4)
         
         print(f"results: {correct}/{correct + incorrect}")
-        print(f"accuracy: {round(correct/(correct + incorrect), 2)}")
+        print(f"accuracy: {round(correct/(correct + incorrect), 2) * 100}%")

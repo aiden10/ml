@@ -1,5 +1,4 @@
 from network import Network
-import os
 
 def load_labels() -> list[int]:
     with open("classifier/data/train-labels.idx1-ubyte", "rb") as f:
@@ -11,39 +10,8 @@ def load_labels() -> list[int]:
 
     return labels
 
-
-def load_testing_labels() -> list[int]:
-    with open("classifier/data/t10k-labels.idx1-ubyte", "rb") as f:
-        # Header
-        magic = int.from_bytes(f.read(4), "big")
-        num_labels = int.from_bytes(f.read(4), "big")
-
-        labels = list(f.read(num_labels))
-
-    return labels
-
-
 def load_images() -> list[list[int]]:
     with open("classifier/data/train-images.idx3-ubyte", "rb") as f:
-        # Header
-        magic = int.from_bytes(f.read(4), "big")
-        num_images = int.from_bytes(f.read(4), "big")
-        num_rows = int.from_bytes(f.read(4), "big")
-        num_columns = int.from_bytes(f.read(4), "big")
-
-        pixels_per_image = num_rows * num_columns
-
-        images = []
-
-        for _ in range(num_images):
-            image = list(f.read(pixels_per_image))
-            images.append(image)
-
-    return images
-
-
-def load_testing_images() -> list[list[int]]:
-    with open("classifier/data/t10k-images.idx3-ubyte", "rb") as f:
         # Header
         magic = int.from_bytes(f.read(4), "big")
         num_images = int.from_bytes(f.read(4), "big")
