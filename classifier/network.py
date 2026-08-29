@@ -134,12 +134,22 @@ class Network:
         
     def train(self, inputs: list[list[float]], expected: list[list[float]]):
         training_results = []
+        correct = 0
+        incorrect = 0
+        
         n = len(inputs)
         for i in range(n):
             result = self.forward_pass(inputs[i])
             loss = Network.calculate_loss(expected[i], result)
             training_results.append({"loss": loss, "result": result, "expected": expected[i]})
             self.backprop(expected=expected[i], actual=result)
+            predicted_label = result.index(max(result))
+            expected_label = expected[i].index(max(expected[i]))
+            if predicted_label == expected_label:
+                correct += 1
+            else:
+                incorrect += 1
+                
             print(f'Completed input {i}/{n}')
         
         # Save weights/biases and training results to json file
@@ -154,4 +164,5 @@ class Network:
         with open("classifier/results/network_record.json", "w", encoding="utf-8") as mr:
             json.dump(network_record, mr, indent=4)
         
-        
+        print(f"results: {correct}/{correct + incorrect}")
+        print(f"accuracy: {round(correct/(correct + incorrect), 2)}")
