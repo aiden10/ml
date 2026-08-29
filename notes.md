@@ -1,4 +1,4 @@
-Where to begin? I guess the architecture?
+At first I wanted to make an LLM, but I realized that was probably too ambitious and decided to start with the fundamentals instead.
 
 # I/O
 I know that the input is going to be a string. It likely needs to be a fixed size. It makes sense for the string to be converted to tokens. Say 10k? I'm assuming that is also what determines the "context" limit. Because the conversation history is fed back into the model as input. And when you exceed that limit you have to trim or summarize the context. Output is going to consist of tokens as well. However it will only be one. Actually, while it will be a single token output, it will technically be a list/vector where each number is the probability of outputting that token. Those numbers will be logits and then I'll use softmax or sigmoid to convert to a probability. Also I can only deal with numbers for the inputs, so what does it mean to convert strings into tokens? 
