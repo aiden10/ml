@@ -60,81 +60,19 @@ The calculations are kind of confusing. Some derivatives (∂L/∂a, ∂a/z, or 
 ### Gradient
 ∂L/∂w is the gradient/slope. Thinking back to basic functions, I remember that functions have slopes. A completely linear function has the same slope for all x. f(x) = 2x. The derivative would be 2. This means that for that function, increasing x by 1 results in the y (output) increasing by 2. And decreasing x by 1 results in the output decreasing by 2. Going back to the loss function, with our gradient we now know how much the loss will change if we adjust that weight. If the gradient is positive, it means increasing the weight will increase the loss/error and vice-versa. Now you know whether to increase or decrease the weight/bias, but you need to know by how much to change it. If you change it by too much, you might end up missing the optimal point and just end up going back and forth. You're goal is to find the max/min. But if you change it by too little, you could get stuck in a local max/min and miss the best possible value for minimizing loss. You adjust by multiplying the gradient by a learning rate and then subtracting it from the weight/bias. Much of the derivative calcuations remain the same per backprop. The derivatives involving the node outputs other than the last one with respect to the weight or bias are the same and don't need to be recalculated. 
 
-# Classifier
-I finished it, at least well enough that it gets 89% accuracy on the 10k testing images. But I did this with a simple network of one hidden layer with 10 nodes. I also only trained with a single "epoch", going over the training data just one time. So before finishing this, I think I'll try seeing what happens when I tweak the training and layers/node counts.
+# Pytorch
+How do you define the model in Pytorch? Parts that I imagine would be customizable:
+- Layer connections (fully, partially, even more specific?): seems fully connected by default but can be changed with manual configuration.
+- Nodes per layer: defined in the init function
+- Amount of layers: defined in the init function
+- Activation functions: defined in the init function
+- Input/output structure: also defined in the init function
+- Backpropagation: apparently the gradient calculation part is always the same, so how you decide to use it to update the nodes is up to you. Well the gradient calculation might change a bit depending on how the network is setup.
 
-## Baseline
-layers_definition = [len(training_images[0]), 10, 10]
-This layer setup with one epoch resulted in:
-    results: 49511/60000
-    accuracy: 83.0%
+So basically all the important aspects can be changed in the init function. The forward pass function also has to be implemented. 
 
-And:
-    results: 8917/10000
-    accuracy: 89.0%
-    On the testing data
-
-![fig 1](classifier/images/base-f1.png)
-fig. 1
-
-## More Epochs
-Same original layers setup, but this time with 3 epochs. Somehow it did no better than the single epoch on the training. 
-
-Training:
-    results: 147988/180000
-    accuracy: 82.0%
-
-Testing:
-    results: 9058/10000
-    accuracy: 91.0%
-
-But it did a bit better than before on the testing data. Based on the results file I can also see that it reached a lower average loss.
-![fig 2](classifier/images/3epochs=f2.png)
-fig. 2
-
-## Additional Layers
-Now with an extra layer with 20 nodes and still a single training epoch:
-layers_definition = [len(training_images[0]), 10, 20, 10]
-
-Training:
-    results: 49276/60000
-    accuracy: 82.0%
-
-Testing:
-    results: 8932/10000
-    accuracy: 89.0%
-
-So basically no change. What about 4 more layers?
-layers_definition = [len(training_images[0]), 10, 10, 10, 10, 20, 10]
-
-Training:
-    results: 34620/60000
-    accuracy: 57.99999999999999%
-
-Testing:
-    results: 7722/10000
-    accuracy: 77.0%
-
-Well that did pretty poorly in training, but somehow still decent with the testing data. I imagine this means it took longer to get good, but was starting to do so by the end.
-
-## Combining
-Now, what happens if I use multiple epochs with a larger network?
-layers_definition = [len(training_images[0]), 32, 32, 32, 32, 32, 10]
-
-Training:
-    Completed epoch 5/5
-    results: 267962/300000
-    accuracy: 89.0%
-Best results with training. Although considering I did 5 epochs, I guess it's not surprising.
-![fig 3](classifier/images/combined-f3.png)
-
-Also had the lowest loss after training.
-
-Testing:
-    results: 9461/10000
-    accuracy: 95.0%
-
-And by far the best testing.
-
-## Conclusion
-Well I guess I can say that more, larger layers seems to have improved the classifier. And training for a longer time also helps. Actually, it'd be more accurate to say that you want as many layers as reasonably possible. The reasonability coming from how long you can train it for without overfitting and without taking too long. It's also tempting to try throwing this neural network strategy at everything.
+nn.Linear(input, output). Seems to be a very common function. It creates a layer in the network. Has two arguments, the amount of nodes input, and the amount of outputs. 
+You define each of your layers in the init function. 
+The layers handle the computation themselves. 
+x = self.fc1(x)
+Automatically returns torch.matmul(x, self.fc1.weight.t()) + self.fc1.bias
