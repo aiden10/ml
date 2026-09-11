@@ -81,3 +81,8 @@ Well I guess I can say that more, larger layers seems to have improved the class
 # CNNs
 Convolutional neural networks. Operate in the same way functionally. You give it an image and it can output an option for each possible thing it could be. Difference is that the initial layer is not fully connected. Instead each node in the first hidden layer is only given a part of original image. The amount of pixels that each node is given is the same throughout the layers though. Also the weights across a given layer are always the same. If we have a 3x3 node input size, then you can think of that layer as having only 9 weights. Connections to subsequent hidden layer nodes follow the same pattern of taking in a fixed amount of inputs like 3x3. Biggest benefit of CNNs are the vastly reduced amount of weights. If each layer now only has say 9 weights, that is so much less computation needed, even with more layers. With a fully connected graph a 64x64 image would require 4096 weights in the initial hidden layer per node. Now that same image would require a lot of nodes in the initial layer, but only ever n amount of weights. Also the biases of every node are also shared on a per layer basis. 
 
+Actually I might have had a few misconceptions about CNNs here. While the layers do use shared weights, I had forgotten about the kernel part. The kernel refers to the grid of weights. And you can have multiple of those grids per layer. Process goes:
+- create weight grids/kernels
+- go over image in "patches", pixel grids of the same size as the kernels
+- do dot product between patch and kernel
+- the product becomes the output for the node
