@@ -46,6 +46,16 @@ class Env:
     
     def get_observation_space(self):
         return self.env.observation_space
+
+    def render(self):
+        # tetris-gymnasium uses np.integer as an astype dtype, which NumPy 2
+        # rejects. Keep the compatibility change limited to the render call.
+        integer_dtype = np.integer
+        try:
+            np.integer = np.int64
+            return self.env.render()
+        finally:
+            np.integer = integer_dtype
     
     def close(self):
         self.env.close()

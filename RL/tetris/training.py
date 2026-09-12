@@ -1,11 +1,13 @@
 import os
 import random
+import csv
 import numpy as np
 import torch
 from model import TetrisDQN
 from env import Env
 
 CHECKPOINT_PATH = "tetris_checkpoint.pt"
+METRICS_PATH = "tetris_metrics.csv"
 
 if __name__ == "__main__":
     gym = Env()
@@ -28,8 +30,9 @@ if __name__ == "__main__":
     epsilon_decay = 0.995
 
     start_episode = 0
-    total_episodes = 1000
+    total_episodes = 10000
     target_sync_freq = 10  # Sync target network every 10 episodes
+    print_count = 0
 
     # Resume from checkpoint if it exists
     if os.path.exists(CHECKPOINT_PATH):
@@ -43,10 +46,20 @@ if __name__ == "__main__":
         print(f"Resumed from episode {start_episode} with epsilon {epsilon:.4f}")
 
     replay_buffer = []
+    episode_returns = []
+
+    if os.path.exists(METRICS_PATH):
+        metrics_file = open(METRICS_PATH, "a", newline="")
+        metrics_writer = csv.writer(metrics_file)
+    else:
+        metrics_file = open(METRICS_PATH, "w", newline="")
+        metrics_writer = csv.writer(metrics_file)
+        metrics_writer.writerow(["episode", "return", "average_return"])
 
     for episode in range(start_episode, total_episodes):
         obs = gym.reset()
         done = False
+        episode_return = 0.0
 
         while not done:
             # Don't always take best expected value option, explore with decay to find other possibilities
@@ -59,6 +72,7 @@ if __name__ == "__main__":
 
             next_obs, reward, terminated, truncated, info = gym.step(action)
             done = terminated or truncated
+            episode_return += reward
 
             # Store transition (tuple)
             replay_buffer.append((obs, action, reward, next_obs, done))
@@ -69,6 +83,16 @@ if __name__ == "__main__":
 
         # Decay epsilon per episode
         epsilon = max(epsilon_min, epsilon * epsilon_decay)
+        episode_returns.append(episode_return)
+        average_return = sum(episode_returns) / len(episode_returns)
+        metrics_writer.writerow([episode + 1, episode_return, average_return])
+        metrics_file.flush()
+        if print_count % 50 == 0:
+            print(
+                f"Episode {episode + 1}: return={episode_return:.2f}, "
+                f"average return={average_return:.2f}"
+            )
+        print_count += 1
 
         # Sync target network weights
         if episode % target_sync_freq == 0:
@@ -87,3 +111,4 @@ if __name__ == "__main__":
             print(f"Saved checkpoint at episode {episode + 1} (epsilon: {epsilon:.4f})")
 
     gym.close()
+    metrics_file.close()
