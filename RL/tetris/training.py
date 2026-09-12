@@ -1,5 +1,6 @@
 import os
 import random
+import numpy as np
 import torch
 from model import TetrisDQN
 from env import Env
@@ -10,11 +11,15 @@ if __name__ == "__main__":
     gym = Env()
     action_space = gym.get_action_space()
     observation_space = gym.get_observation_space()
+    input_size = (
+        np.prod(observation_space["board"].shape)
+        + np.prod(observation_space["active_tetromino_mask"].shape)
+    )
 
     num_actions = action_space.n if hasattr(action_space, "n") else len(action_space)
 
-    agent = TetrisDQN(input=observation_space, hidden=64, output=num_actions, learning_rate=0.01, discount_factor=0.99)
-    target_network = TetrisDQN(input=observation_space, hidden=64, output=num_actions, learning_rate=0.01, discount_factor=0.99)
+    agent = TetrisDQN(input=input_size, hidden=64, output=num_actions, learning_rate=0.01, discount_factor=0.99)
+    target_network = TetrisDQN(input=input_size, hidden=64, output=num_actions, learning_rate=0.01, discount_factor=0.99)
     target_network.load_state_dict(agent.state_dict())
 
     # hyperparameters
@@ -49,7 +54,7 @@ if __name__ == "__main__":
                 action = random.randrange(num_actions)
             else:
                 with torch.no_grad():
-                    output = agent(obs)
+                    output = agent(agent.process_obs(obs))
                     action = torch.argmax(output).item()
 
             next_obs, reward, terminated, truncated, info = gym.step(action)
@@ -58,7 +63,7 @@ if __name__ == "__main__":
             # Store transition (tuple)
             replay_buffer.append((obs, action, reward, next_obs, done))
 
-            agent.learn(target_network, obs, action, reward, next_obs, done)
+            agent.learn(target_network, replay_buffer)
 
             obs = next_obs
 

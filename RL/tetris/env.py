@@ -46,3 +46,6 @@ class Env:
     
     def get_observation_space(self):
         return self.env.observation_space
+    
+    def close(self):
+        self.env.close()

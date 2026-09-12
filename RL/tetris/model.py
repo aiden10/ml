@@ -1,3 +1,5 @@
+import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,23 +23,40 @@ class TetrisDQN(nn.Module):
         x = self.output_layer(x)
         return x
     
-    def learn(self, target_network: nn.Module, state, action: int, reward: float, next_state, done: bool):
-        state_tensor = torch.as_tensor(state, dtype=torch.float32)
-        next_state_tensor = torch.as_tensor(next_state, dtype=torch.float32)
+    def process_obs(self, obs) -> torch.Tensor:
+        board = obs["board"].flatten()
+        mask = obs["active_tetromino_mask"].flatten()
+        flat = np.concatenate([board, mask])
+        return torch.as_tensor(flat, dtype=torch.float32)
+    
+    def learn(self, target_network: nn.Module, replay_buffer: list, batch_size: int = 64):
+        if len(replay_buffer) < batch_size:
+            return None
+
+        # Get random batch of replays
+        batch = random.sample(replay_buffer, batch_size)
+        states, actions, rewards, next_states, dones = zip(*batch)
         
-        q_values = self.forward(state_tensor)
-        current_q = q_values[action]
+        # Convert chosen batch to tensors
+        state_batch = torch.stack([self.process_obs(s) for s in states])
+        next_state_batch = torch.stack([self.process_obs(ns) for ns in next_states])
         
+        action_batch = torch.tensor(actions, dtype=torch.int64).unsqueeze(1)
+        reward_batch = torch.tensor(rewards, dtype=torch.float32).unsqueeze(1)
+        done_batch = torch.tensor(dones, dtype=torch.float32).unsqueeze(1)
+        
+        current_q = self(state_batch).gather(1, action_batch)
+        
+        # Do the actual Q learning formula
         with torch.no_grad():
-            next_q_values = target_network.forward(next_state_tensor)
-            max_next_q = torch.max(next_q_values)
-            
-            target_q = reward if done else reward + self.df * max_next_q
-        
+            max_next_q = target_network(next_state_batch).max(1)[0].unsqueeze(1)
+            target_q = reward_batch + (1.0 - done_batch) * (self.df * max_next_q)
+
+        # Backprop
         loss = self.criterion(current_q, target_q)
-        
+
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        
+
         return loss.item()
