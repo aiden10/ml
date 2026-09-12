@@ -51,10 +51,53 @@ As the output nodes/actions.
     - Step function
     - Function which takes in an input and performs it
 
-- agent.py
+- model.py
     - Contains the actual network
     - Public functions: forward(input) -> action, train(reward_from_action) -> updates weights
 
 - train.py
     - Initializes the environment and the agent
     - Contains the step -> action -> train loop
+
+# Notes
+I couldn't get the NES Tetris gym library to work, so I am just going to use a pure simulation one instead. This environment exposes:
+- Observation Space: 
+    - 'active_tetromino_mask': Box(0, 1, (24, 18), uint8), 
+    - 'board': Box(0, 9, (24, 18), uint8), 
+    - 'holder': Box(0, 9, (4, 4), uint8), 
+    - 'queue': Box(0, 9, (4, 16), uint8)
+- Action Space: Discrete(8)
+    - 1: Do nothing
+    - 2: Move left
+    - 3: Move right
+    - 4: Rotate clockwise
+    - 5: Rotate counter-clockwise
+    - 6: Soft drop
+    - 7: Hard drop
+    - 8: Swap
+
+active_tetromino_mask: all 0s and 1s. 1 represents a tile where a block exists, and 0 means it's empty. Importantly, it only shows the moving pieces.
+board: a filled tile represents a piece is there. The number determines the kind of piece it is.
+holder: the block that is currently held
+queue: the next pieces in queue
+
+Well at least I don't need to worry about reading memory to extract the info.
+
+Training aspect is a bit confusing. The model only outputs expected Q values for every possible action. But all I have to update the weights is the reward gained from the action. I can compare the expected Q value and the actual reward that was gained. What's confusing is getting the max Q value of the next state. Would it require another forward pass? Like:
+- Get expected Q value for each action
+- Perform action with highest Q value
+- Calculate reward
+- Do another forward pass with the input being the env's state after performing the action
+- Now you have all the data to calculate the target and loss
+So the target is what you want the current state's Q value be. It's the next state's max Q-value + the reward that was obtained from doing the current state's chosen action. Also Q value represents the total sum of all future rewards from some point. So we add rewards to the next state. 
+
+Apparently there are two major issues.
+1. The differences between each step will basically be identical. This is bad because there's too much variance and not enough has actually changed. That variance might mean losing actual progress. By variance I mean too many steps and weight update cycles. Actually the issue is things getting "lost". Rare events wouldn't be able to be effectively learned because they would just get forgotten.
+2. Using the same weights for both passes means both get updated. Updating the present and future states means moving the target moves and the "present" also moves.
+
+To fix issue 1, I can use a buffer. The buffer stores the previous n state, action, reward, and next state states and the model periodcally randomly samples that buffer to use for training. Rather than operating in a continuous: forward -> do action -> train loop.
+
+For issue 2, I can use two networks. The first is updated in real-time, but the second remains static and is only updated after a game finishes or maybe every few hundred steps. That frozen one would be the "target network". The one which fetches the future state's Q value.
+
+Apparently pytorch accumulates weight gradients by default. I assume it's so that you wouldn't need to weight -= (gradient * learning_rate) tons of times and could instead just do it a single time. Although at the cost of the model only updating periodically. 
+Pytorch optimizers are what handle updating the weights given the gradient. SGD does the approach I just did: weight -= (gradient * learning_rate). But apparently there are better options. Most common seems to be "Adam". Which probably does more advanced statistical calculations to determine how to update the weights. Apparently, it's actually more that you usually don't want to constantly update models. Usually you do it periodically which means accumulating gradients. 
