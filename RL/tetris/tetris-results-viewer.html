@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tetris Training Results</title>
+<style>
+:root{color-scheme:dark;--bg:#10131a;--card:#191f2b;--return:#77b8ff;--average:#75d69d;--lines:#d69cff;--muted:#a9b5c8;--edge:#334158}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0,#1c2a44,#10131a 55%);color:#f2f6fc;font:16px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:1120px;margin:auto;padding:42px 20px}h1{font-size:30px;margin:0 0 6px}p,.status{color:var(--muted)}.picker{display:block;margin:25px 0;border:2px dashed #506786;border-radius:14px;padding:26px;text-align:center;background:#141b28;cursor:pointer}.picker:hover,.picker.drag{border-color:var(--return);background:#192641}.picker input{display:none}.chart-card{position:relative;background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:18px;min-height:520px}.topline{display:flex;gap:22px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}.metric{font-size:13px;color:var(--muted)}.metric b{color:#fff;font-size:20px;margin-left:5px}.control{margin-left:auto;color:var(--muted);font-size:14px}.control select{margin-left:6px;color:#f2f6fc;background:#263650;border:1px solid #58739b;border-radius:6px;padding:6px}.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:0 0 6px}.swatch{display:inline-block;width:20px;height:3px;vertical-align:middle;margin-right:5px}.canvas-wrap{position:relative;height:420px;touch-action:none}canvas{display:block;width:100%;height:100%;cursor:crosshair}.tip{position:absolute;display:none;pointer-events:none;transform:translate(12px,-110%);background:#090d14;border:1px solid #5d7398;border-radius:7px;padding:7px 9px;box-shadow:0 5px 18px #0008;font-size:13px;white-space:nowrap}.hint{font-size:13px;color:var(--muted);margin:9px 0 0}@media(max-width:600px){.wrap{padding:25px 13px}.chart-card{padding:12px}.canvas-wrap{height:350px}.control{margin-left:0}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Tetris training returns</h1>
+  <p>Choose <code>tetris_metrics.csv</code>. It is processed locally in your browser.</p>
+  <label class="picker" id="drop"><input id="file" type="file" accept=".csv,text/csv"><strong>Choose a metrics CSV file</strong><br><span>or drag it here</span></label>
+  <div class="status" id="status">Waiting for a file.</div>
+  <section class="chart-card" id="chartCard" hidden>
+    <div class="topline">
+      <div class="metric">Episodes <b id="count">—</b></div>
+      <div class="metric">Mean return <b id="mean">—</b></div>
+      <div class="metric">Min / max return <b id="range">—</b></div>
+      <div class="metric">Total logged lines <b id="totalLines">—</b></div>
+      <label class="control">Smoothing <select id="window"><option value="1">Raw returns</option><option value="25">25 episodes</option><option value="100" selected>100 episodes</option><option value="500">500 episodes</option></select></label>
+    </div>
+    <div class="legend"><span><i class="swatch" style="background:var(--return)"></i>Episode return</span><span><i class="swatch" style="background:var(--average)"></i>Recorded average return</span><span><i class="swatch" style="background:var(--lines)"></i>Lines cleared (right axis)</span></div>
+    <div class="canvas-wrap" id="canvasWrap"><canvas id="chart"></canvas><div class="tip" id="tip"></div></div>
+    <div class="hint" id="hint">Hover over the chart to inspect an episode range.</div>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);let rows=[],series=[],plot=[],bounds,hover=-1;
+const fmt=n=>Number.isFinite(n)?(Math.abs(n)>=1e4||(Math.abs(n)<1e-4&&n!==0)?n.toExponential(4):n.toFixed(4).replace(/0+$/,'').replace(/\.$/,'')):'—';
+function parseCsv(text){
+  const lines=text.split(/\r?\n/).filter(Boolean),header=lines.shift().split(',').map(v=>v.trim()),index=name=>header.indexOf(name),episode=index('episode'),episodeReturn=index('return'),averageReturn=index('average_return'),linesCleared=index('lines_cleared'),records=[];
+  for(const line of lines){
+    const cells=line.trim().split(','),e=Number(cells[episode]),r=Number(cells[episodeReturn]),a=Number(cells[averageReturn]),lineValue=cells[linesCleared],l=lineValue===undefined||lineValue===''?null:Number(lineValue);
+    if(Number.isFinite(e)&&Number.isFinite(r)&&Number.isFinite(a))records.push({episode:e,return:r,average:a,lines:Number.isFinite(l)?l:null});
+  }
+  return records;
+}
+function load(file){
+  if(!file)return;$('status').textContent='Reading '+file.name+'…';$('chartCard').hidden=true;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    rows=parseCsv(reader.result);
+    if(!rows.length){$('status').textContent='No valid rows found. Expected: episode,return,average_return.';return}
+    const returns=rows.map(d=>d.return),sum=returns.reduce((a,b)=>a+b,0);
+    const totalLines=rows.reduce((sum,d)=>sum+(d.lines??0),0);
+    $('count').textContent=rows.length.toLocaleString();$('mean').textContent=fmt(sum/rows.length);$('range').textContent=fmt(Math.min(...returns))+' / '+fmt(Math.max(...returns));$('totalLines').textContent=totalLines.toLocaleString();
+    $('status').textContent='Loaded '+rows.length.toLocaleString()+' episodes.';$('chartCard').hidden=false;render();
+  };
+  reader.onerror=()=>{$('status').textContent='Could not read that file.'};reader.readAsText(file);
+}
+function makeSeries(){
+  const window=+$('window').value,out=[];
+  for(let start=0;start<rows.length;start+=window){
+    const group=rows.slice(start,start+window),end=group[group.length-1];
+    const lines=group.filter(d=>Number.isFinite(d.lines));
+    out.push({start,end:end.episode,return:group.reduce((s,d)=>s+d.return,0)/group.length,average:end.average,lines:lines.length?lines.reduce((s,d)=>s+d.lines,0)/lines.length:null});
+  }
+  return out;
+}
+function downsample(values,max=12000){
+  if(values.length<=max)return values;const out=[],bucket=Math.ceil(values.length/(max/2));
+  for(let start=0;start<values.length;start+=bucket){
+    const group=values.slice(start,start+bucket),low=group.reduce((a,b)=>a.return<b.return?a:b),high=group.reduce((a,b)=>a.return>b.return?a:b);
+    out.push(low,high);
+  }
+  return out.sort((a,b)=>a.start-b.start);
+}
+function render(){
+  if(!rows.length)return;series=makeSeries();plot=downsample(series);
+  const c=$('chart'),box=$('canvasWrap').getBoundingClientRect(),d=devicePixelRatio,w=box.width,h=box.height,g=c.getContext('2d');
+  c.width=Math.floor(w*d);c.height=Math.floor(h*d);g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);
+  const values=plot.flatMap(p=>[p.return,p.average]),lo0=Math.min(...values),hi0=Math.max(...values),pad=Math.max(1,(hi0-lo0)*.06),lo=lo0-pad,hi=hi0+pad,lineValues=plot.map(p=>p.lines).filter(Number.isFinite),lineHi=Math.max(1,...lineValues);
+  bounds={w,h,l:62,r:56,t:16,b:34,lo,hi,lineHi};const b=bounds,pw=w-b.l-b.r,ph=h-b.t-b.b,x=d0=>b.l+pw*(d0.start-series[0].start)/Math.max(1,series[series.length-1].start-series[0].start),y=v=>b.t+ph*(1-(v-lo)/(hi-lo)),lineY=v=>b.t+ph*(1-v/lineHi);
+  g.font='12px system-ui';g.strokeStyle='#3b4b63';g.fillStyle='#a9b5c8';g.lineWidth=1;
+  for(let j=0;j<5;j++){const yy=b.t+ph*j/4;g.beginPath();g.moveTo(b.l,yy);g.lineTo(b.l+pw,yy);g.stroke();g.fillText(fmt(hi-(hi-lo)*j/4),2,yy+4)}
+  g.textAlign='right';for(let j=0;j<5;j++){const yy=b.t+ph*j/4;g.fillText(fmt(lineHi*(1-j/4)),w-2,yy+4)}g.textAlign='left';
+  g.fillText('episode '+series[0].start,b.l,h-8);const last='episode '+series[series.length-1].end;g.fillText(last,Math.max(b.l,w-g.measureText(last).width-2),h-8);
+  function line(key,color,yScale){g.strokeStyle=color;g.lineWidth=key==='return'?1.25:1.8;g.beginPath();let open=false;plot.forEach(p=>{if(!Number.isFinite(p[key])){open=false;return}if(open)g.lineTo(x(p),yScale(p[key]));else{g.moveTo(x(p),yScale(p[key]));open=true}});g.stroke()}
+  line('return','#77b8ff',y);line('average','#75d69d',y);line('lines','#d69cff',lineY);
+  if(hover>=0){const p=series[hover],xx=x(p);g.strokeStyle='#d6e8ff';g.beginPath();g.moveTo(xx,b.t);g.lineTo(xx,b.t+ph);g.stroke();[['return','#77b8ff',y],['average','#75d69d',y],['lines','#d69cff',lineY]].forEach(([key,color,yScale])=>{if(Number.isFinite(p[key])){g.fillStyle=color;g.beginPath();g.arc(xx,yScale(p[key]),4,0,Math.PI*2);g.fill()}})}
+}
+function move(e){
+  if(!bounds||!series.length)return;const rect=$('chart').getBoundingClientRect(),b=bounds,px=Math.max(b.l,Math.min(b.w-b.r,e.clientX-rect.left));
+  const t=(px-b.l)/(b.w-b.l-b.r),index=Math.round(t*(series.length-1));hover=Math.max(0,Math.min(series.length-1,index));render();
+  const p=series[hover],tip=$('tip');tip.style.display='block';tip.style.left=px+'px';tip.style.top=Math.max(b.t,Math.min(b.h-b.b,e.clientY-rect.top))+'px';tip.textContent='Episodes '+p.start+'–'+p.end+'  •  Return: '+fmt(p.return)+'  •  Average: '+fmt(p.average)+'  •  Lines: '+fmt(p.lines);
+}
+const drop=$('drop');$('file').onchange=e=>load(e.target.files[0]);['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('drag')}));['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('drag')}));drop.addEventListener('drop',e=>load(e.dataTransfer.files[0]));$('chart').addEventListener('pointermove',move);$('chart').addEventListener('pointerleave',()=>{$('tip').style.display='none';hover=-1;render()});$('window').onchange=()=>{hover=-1;$('tip').style.display='none';render()};addEventListener('resize',render);
+</script>
+</body>
+</html>

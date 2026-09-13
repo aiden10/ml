@@ -26,7 +26,9 @@ class TetrisDQN(nn.Module):
     def process_obs(self, obs) -> torch.Tensor:
         board = obs["board"].flatten()
         mask = obs["active_tetromino_mask"].flatten()
-        flat = np.concatenate([board, mask])
+        holder = obs["holder"].flatten()
+        queue = obs["queue"].flatten()
+        flat = np.concatenate([board, mask, holder, queue])
         return torch.as_tensor(flat, dtype=torch.float32)
     
     def learn(self, target_network: nn.Module, replay_buffer: list, batch_size: int = 64):
@@ -35,7 +37,7 @@ class TetrisDQN(nn.Module):
 
         # Get random batch of replays
         batch = random.sample(replay_buffer, batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
+        states, actions, rewards, next_states, dones, next_valid_actions = zip(*batch)
         
         # Convert chosen batch to tensors
         state_batch = torch.stack([self.process_obs(s) for s in states])
@@ -49,7 +51,15 @@ class TetrisDQN(nn.Module):
         
         # Do the actual Q learning formula
         with torch.no_grad():
-            max_next_q = target_network(next_state_batch).max(1)[0].unsqueeze(1)
+            next_q_values = target_network(next_state_batch)
+            max_next_q = torch.stack(
+                [
+                    q[actions].max()
+                    if actions
+                    else torch.zeros((), dtype=q.dtype, device=q.device)
+                    for q, actions in zip(next_q_values, next_valid_actions)
+                ]
+            ).unsqueeze(1)
             target_q = reward_batch + (1.0 - done_batch) * (self.df * max_next_q)
 
         # Backprop

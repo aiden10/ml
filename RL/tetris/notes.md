@@ -101,3 +101,17 @@ For issue 2, I can use two networks. The first is updated in real-time, but the 
 
 Apparently pytorch accumulates weight gradients by default. I assume it's so that you wouldn't need to weight -= (gradient * learning_rate) tons of times and could instead just do it a single time. Although at the cost of the model only updating periodically. 
 Pytorch optimizers are what handle updating the weights given the gradient. SGD does the approach I just did: weight -= (gradient * learning_rate). But apparently there are better options. Most common seems to be "Adam". Which probably does more advanced statistical calculations to determine how to update the weights. Apparently, it's actually more that you usually don't want to constantly update models. Usually you do it periodically which means accumulating gradients. 
+
+Well it doesn't seem to have learned anything even after 10k episodes, it just lets the blocks pile up and dies. Inputs are being made though because I saw it spin some blocks. How do you debug AI models? It doesn't have any explicit problem, all you know is that it doesn't work as expected. To confirm if it's an issue with my rewards structure, I'll try doing training with the default reward from the gym environment. It seems slightly better, but still not great. Yeah after 5000 episodes it's slightly better? Still very bad, only difference is that it starts placing blocks to the left or right to avoid losing as quickly. Might be an issue with the exploration. It could be getting stuck in suboptimal states and not able to find the way out.
+After almost 10k episodes, I can see that it is beginning to survive longer, but it's only suriving by avoiding stacking pieces vertically in the same spot. It hasn't learned to clear lines. And I'm not sure it can discover that anymore either.
+
+Tried decreasing learning rate and making epsilon decay slower to have more exploration. Unfortunately neither of those changes seemed to have worked. The change which had the biggest impact was going back to my custom reward calculation, but changing the logic for the holes. Before I was calculating the amount of holes and multiplying that by 1.5. However, that meant that if there were 10 holes, 10 * 1.5 would be subtracted from the reward at every single step. But that change only brought me back to where the other reward system was at. It moves the pieces to avoid losing as fast, but still didn't learn to clear lines.
+
+- Tried lowering discount factor a bit
+- Now using random seed every episode
+- Apparently I didn't even have the queue and held piece visible to the model
+
+Now trying with macro actions. Instead of every action being a controller input, the possible actions are now just "one" bigger action. The agent specifies:
+- Amount of rotations
+- Which column to move to
+And then the piece gets hard dropped.
