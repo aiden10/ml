@@ -115,3 +115,14 @@ Now trying with macro actions. Instead of every action being a controller input,
 - Amount of rotations
 - Which column to move to
 And then the piece gets hard dropped.
+This also didn't really help. Maybe now because there are fewer actions, the epsilon decays too slowly?
+Quicker decay didn't make a difference. Now trying with changed reward structure which considers the board quality based unevenness, height and holes. Also trying with a replay buffer with a fixed size.   
+
+Trying again with: 
+- increased replay buffer size
+- increased target sync step count
+- a "warmup stage" so the learning only begins after the replay buffer has filled up enough
+
+However, none of these changes were successful. Some other things I want to try:
+- "Reverse curriculum", starting with states close to what you want and then working backwards. In this case it would be starting with boards which are maybe only one piece away from having a line cleared. Then you move on to boards which are less complete. 
+- When a line clear happens, it should be prioritized in the replays since it's so rare. A basic way of doing something like this would be adding the rare clears into the replay buffer multiple times. Or giving each one a probability/priority of some kind.

@@ -1,6 +1,7 @@
 import os
 import random
 import csv
+from collections import deque
 from pathlib import Path
 import numpy as np
 import torch
@@ -13,9 +14,12 @@ METRICS_PATH = TETRIS_DIR / "tetris_metrics.csv"
 LEARNING_RATE = 0.001
 EPSILON_START = 1.0
 EPSILON_MIN = 0.05
-EPSILON_DECAY_STEPS = 500_000
+EPSILON_DECAY_STEPS = 50_000
 EPSILON_DECAY = (EPSILON_MIN / EPSILON_START) ** (1 / EPSILON_DECAY_STEPS)
-DISCOUNT_FACTOR = 0.85
+DISCOUNT_FACTOR = 0.99
+REPLAY_BUFFER_SIZE = 20_000
+REPLAY_WARMUP_STEPS = 5_000
+TARGET_SYNC_STEPS = 2_000
 
 if __name__ == "__main__":
     gym = Env(render_mode=None)
@@ -36,8 +40,7 @@ if __name__ == "__main__":
     epsilon = EPSILON_START
 
     start_episode = 0
-    total_episodes = 25000
-    target_sync_freq = 10  # Sync target network every 10 episodes
+    total_episodes = 50000
     print_count = 0
     total_steps = 0
 
@@ -55,7 +58,7 @@ if __name__ == "__main__":
         total_steps = checkpoint.get("total_steps", 0)
         print(f"Resumed from episode {start_episode} with epsilon {epsilon:.4f}")
 
-    replay_buffer = []
+    replay_buffer = deque(maxlen=REPLAY_BUFFER_SIZE)
     episode_returns = []
 
     if os.path.exists(METRICS_PATH):
@@ -97,11 +100,15 @@ if __name__ == "__main__":
                 (obs, action, reward, next_obs, done, next_valid_actions)
             )
 
-            agent.learn(target_network, replay_buffer)
+            if len(replay_buffer) >= REPLAY_WARMUP_STEPS:
+                agent.learn(target_network, replay_buffer)
 
             obs = next_obs
             total_steps += 1
             epsilon = max(EPSILON_MIN, epsilon * EPSILON_DECAY)
+
+            if total_steps % TARGET_SYNC_STEPS == 0:
+                target_network.load_state_dict(agent.state_dict())
 
         episode_returns.append(episode_return)
         average_return = sum(episode_returns) / len(episode_returns)
@@ -116,10 +123,6 @@ if __name__ == "__main__":
                 f"lines cleared={episode_lines_cleared}"
             )
         print_count += 1
-
-        # Sync target network weights
-        if episode % target_sync_freq == 0:
-            target_network.load_state_dict(agent.state_dict())
 
         # Save checkpoint periodically (every 50 episodes) and on final episode
         if (episode + 1) % 50 == 0 or (episode + 1) == total_episodes:
