@@ -8,13 +8,76 @@ class Env:
 
     def __init__(self, render_mode: str = "human"):
         self.prev_holes = 0
+        self.curriculum_pieces_remaining = 0
+        self.curriculum_solution = []
         self.env = gym.make("tetris_gymnasium/Tetris", render_mode=render_mode)
         self.macro_action_space = gym.spaces.Discrete(self.ROTATIONS * self.env.unwrapped.width)
 
     def reset(self):
         obs, info = self.env.reset(seed=random.randint(0, 2**16))
         self.prev_holes = 0
+        self.curriculum_pieces_remaining = 0
+        self.curriculum_solution = []
         return obs
+
+    def reset_n_placements_from_line_clear(self, placements: int):
+        """Reset to a board with a guaranteed vertical-I-piece solution.
+
+        The bottom row is full except for ``placements`` cells. The active
+        piece and the next pieces are forced to I-pieces, and one vertical I
+        placement in each listed column completes the row. ``curriculum_solution``
+        exposes that valid macro-action sequence for diagnostics or tests.
+        """
+        tetris = self.env.unwrapped
+        i_piece_index = 0
+        i_piece = tetris.tetrominoes[i_piece_index]
+
+        vertical_actions = {}
+        piece = i_piece
+        for rotation in range(self.ROTATIONS):
+            occupied_columns = np.flatnonzero(np.any(piece.matrix > 0, axis=0))
+            if len(occupied_columns) == 1:
+                occupied_column = int(occupied_columns[0])
+                for target_column in range(tetris.width - piece.matrix.shape[1] + 1):
+                    board_column = target_column + occupied_column
+                    vertical_actions.setdefault(
+                        board_column, rotation * tetris.width + target_column
+                    )
+            piece = tetris.rotate(piece, clockwise=True)
+
+        if not 1 <= placements <= len(vertical_actions):
+            raise ValueError(
+                f"placements must be between 1 and {len(vertical_actions)}"
+            )
+
+        self.reset()
+        tetris.board = tetris.create_board()
+
+        available_columns = sorted(vertical_actions)
+        selected_indices = np.linspace(
+            0, len(available_columns) - 1, placements, dtype=int
+        )
+        gap_columns = [available_columns[index] for index in selected_indices]
+        bottom_row = tetris.height - 1
+        playable_columns = slice(tetris.padding, tetris.padding + tetris.width)
+        tetris.board[bottom_row, playable_columns] = i_piece.id
+        for column in gap_columns:
+            tetris.board[bottom_row, tetris.padding + column] = 0
+
+        self.curriculum_pieces_remaining = placements
+        self.curriculum_solution = [vertical_actions[column] for column in gap_columns]
+        self._set_curriculum_i_piece()
+        self.prev_holes = 0
+        return tetris._get_obs()
+
+    def _set_curriculum_i_piece(self):
+        """Expose I-pieces while a generated curriculum solution is active."""
+        tetris = self.env.unwrapped
+        tetris.active_tetromino = tetris.tetrominoes[0]
+        tetris.reset_tetromino_position()
+        tetris.queue.queue.clear()
+        for _ in range(tetris.queue.size):
+            tetris.queue.queue.append(0)
 
     def compute_reward(self, obs, info, terminated: bool) -> float:
         reward = 0.0
@@ -57,6 +120,11 @@ class Env:
         tetris.y = 0
 
         obs, _, terminated, truncated, info = self.env.step(tetris.actions.hard_drop)
+        if self.curriculum_pieces_remaining:
+            self.curriculum_pieces_remaining -= 1
+            if not (terminated or truncated) and self.curriculum_pieces_remaining:
+                self._set_curriculum_i_piece()
+                obs = tetris._get_obs()
         reward = self.compute_reward(obs, info, terminated)
         return obs, reward, terminated, truncated, info
 

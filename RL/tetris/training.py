@@ -20,6 +20,20 @@ DISCOUNT_FACTOR = 0.99
 REPLAY_BUFFER_SIZE = 20_000
 REPLAY_WARMUP_STEPS = 5_000
 TARGET_SYNC_STEPS = 2_000
+CURRICULUM_STAGES = (
+    (0, 1),       # Start one placement from a line clear.
+    (15_000, 2),   
+    (30_000, 3),
+    (50_000, None),  # Continue from normal, empty-board starts.
+)
+
+def curriculum_placements_for_episode(episode: int) -> int | None:
+    placements = None
+    for start_episode, stage_placements in CURRICULUM_STAGES:
+        if episode < start_episode:
+            break
+        placements = stage_placements
+    return placements
 
 if __name__ == "__main__":
     gym = Env(render_mode=None)
@@ -70,7 +84,11 @@ if __name__ == "__main__":
         metrics_writer.writerow(["episode", "return", "average_return", "lines_cleared"])
 
     for episode in range(start_episode, total_episodes):
-        obs = gym.reset()
+        curriculum_placements = curriculum_placements_for_episode(episode)
+        if curriculum_placements is None:
+            obs = gym.reset()
+        else:
+            obs = gym.reset_n_placements_from_line_clear(curriculum_placements)
         done = False
         episode_return = 0.0
         episode_lines_cleared = 0
