@@ -129,3 +129,5 @@ However, none of these changes were successful. Some other things I want to try:
 
 Reverse curriculum did work for clearing more lines. Though it wasn't able to consistently clear a line in the single line board states and failed with subsequent, harder board states. Might just need more training time. If this, plus the replay priority still fails, I will probably move to evaluation of every possible piece placement. It is better, but still not able to clear lines when it goes to regular board states. Interestingly, despite not clearing more lines, the average return continues to get higher. I wonder when it would reach the limit.
 Pretty interesting results after 50k episodes, didn't manage to ever truly learn how to clear lines properly, but it definitely seemed a bit better. Weird because it saw a huge spike in lines cleared episodes 31500-32000, and then it just immediately went back down. Average return did still continue to climb. 
+
+Evaluating possible actions was still not doing too good. Better but still not consistently getting to the point of clearing lines. So now I'm wondering if the structure of my network is wrong.

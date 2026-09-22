@@ -5,12 +5,12 @@ from collections import deque
 from pathlib import Path
 import numpy as np
 import torch
-from model import TetrisDQN
+from model import TetrisAfterstateValue
 from env import Env
 
 TETRIS_DIR = Path(__file__).resolve().parent
-CHECKPOINT_PATH = TETRIS_DIR / "tetris_checkpoint.pt"
-METRICS_PATH = TETRIS_DIR / "tetris_metrics.csv"
+CHECKPOINT_PATH = TETRIS_DIR / "tetris_afterstate_checkpoint.pt"
+METRICS_PATH = TETRIS_DIR / "tetris_afterstate_metrics.csv"
 LEARNING_RATE = 0.001
 EPSILON_START = 1.0
 EPSILON_MIN = 0.05
@@ -22,9 +22,9 @@ REPLAY_WARMUP_STEPS = 5_000
 TARGET_SYNC_STEPS = 2_000
 CURRICULUM_STAGES = (
     (0, 1),       # Start one placement from a line clear.
-    (15_000, 2),   
-    (30_000, 3),
-    (50_000, None),  # Continue from normal, empty-board starts.
+    (5_000, 2),   
+    (10_000, 3),
+    (15_000, None),  # Continue from normal, empty-board starts.
 )
 
 def curriculum_placements_for_episode(episode: int) -> int | None:
@@ -35,19 +35,52 @@ def curriculum_placements_for_episode(episode: int) -> int | None:
         placements = stage_placements
     return placements
 
+
+class AfterstateReplayBuffer:
+    """Keep complete placement sets while preserving the old outcome capacity."""
+
+    def __init__(self, max_outcomes: int):
+        self.max_outcomes = max_outcomes
+        self.entries = deque()
+        self.outcome_count = 0
+
+    def append(self, state, outcomes) -> None:
+        if not outcomes:
+            return
+
+        while self.entries and self.outcome_count + len(outcomes) > self.max_outcomes:
+            _, discarded_outcomes = self.entries.popleft()
+            self.outcome_count -= len(discarded_outcomes)
+
+        self.entries.append((state, outcomes))
+        self.outcome_count += len(outcomes)
+
+    def sample(self, batch_size: int):
+        return random.sample(self.entries, batch_size)
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
 if __name__ == "__main__":
     gym = Env(render_mode=None)
-    action_space = gym.get_action_space()
     observation_space = gym.get_observation_space()
     input_size = sum(
         np.prod(observation_space[key].shape)
         for key in ("board", "active_tetromino_mask", "holder", "queue")
     )
 
-    num_actions = action_space.n if hasattr(action_space, "n") else len(action_space)
-
-    agent = TetrisDQN(input=input_size, hidden=64, output=num_actions, learning_rate=LEARNING_RATE, discount_factor=DISCOUNT_FACTOR)
-    target_network = TetrisDQN(input=input_size, hidden=64, output=num_actions, learning_rate=LEARNING_RATE, discount_factor=DISCOUNT_FACTOR)
+    agent = TetrisAfterstateValue(
+        input=input_size,
+        hidden=64,
+        learning_rate=LEARNING_RATE,
+        discount_factor=DISCOUNT_FACTOR,
+    )
+    target_network = TetrisAfterstateValue(
+        input=input_size,
+        hidden=64,
+        learning_rate=LEARNING_RATE,
+        discount_factor=DISCOUNT_FACTOR,
+    )
     target_network.load_state_dict(agent.state_dict())
 
     # hyperparameters
@@ -72,7 +105,7 @@ if __name__ == "__main__":
         total_steps = checkpoint.get("total_steps", 0)
         print(f"Resumed from episode {start_episode} with epsilon {epsilon:.4f}")
 
-    replay_buffer = deque(maxlen=REPLAY_BUFFER_SIZE)
+    replay_buffer = AfterstateReplayBuffer(REPLAY_BUFFER_SIZE)
     episode_returns = []
 
     if os.path.exists(METRICS_PATH):
@@ -94,32 +127,27 @@ if __name__ == "__main__":
         episode_lines_cleared = 0
 
         while not done:
-            valid_actions = gym.get_valid_actions()
-            if not valid_actions:
+            candidate_outcomes = gym.simulate_all_valid_placements()
+            if not candidate_outcomes:
                 raise RuntimeError("No valid macro actions are available before the episode ended.")
+            valid_actions = [action for action, _, _, _ in candidate_outcomes]
 
-            # Explore or select the highest-valued valid final placement.
+            # Choose a placement by evaluating its concrete resulting board.
             if random.random() < epsilon:
                 action = random.choice(valid_actions)
             else:
                 with torch.no_grad():
-                    output = agent(agent.process_obs(obs))
-                    valid_action_tensor = torch.tensor(valid_actions, dtype=torch.int64)
-                    action = valid_actions[torch.argmax(output[valid_action_tensor]).item()]
+                    scores = agent.score_afterstates(candidate_outcomes)
+                    action = candidate_outcomes[torch.argmax(scores).item()][0]
+
+            replay_buffer.append(obs, candidate_outcomes)
+            if replay_buffer.outcome_count >= REPLAY_WARMUP_STEPS:
+                agent.learn(target_network, replay_buffer)
 
             next_obs, reward, terminated, truncated, info = gym.step(action)
             done = terminated or truncated
             episode_return += reward
             episode_lines_cleared += info.get("lines_cleared", 0)
-            next_valid_actions = [] if done else gym.get_valid_actions()
-
-            # Store transition (tuple)
-            replay_buffer.append(
-                (obs, action, reward, next_obs, done, next_valid_actions)
-            )
-
-            if len(replay_buffer) >= REPLAY_WARMUP_STEPS:
-                agent.learn(target_network, replay_buffer)
 
             obs = next_obs
             total_steps += 1

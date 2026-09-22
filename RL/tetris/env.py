@@ -128,6 +128,42 @@ class Env:
         reward = self.compute_reward(obs, info, terminated)
         return obs, reward, terminated, truncated, info
 
+    def simulate_all_valid_placements(self):
+        """Return a simulated afterstate for every valid macro action.
+
+        The wrapped Tetris environment provides cheap state snapshots. Each
+        candidate is stepped from the same snapshot, then the live state and
+        reward/curriculum bookkeeping are restored before the next candidate.
+        """
+        tetris = self.env.unwrapped
+        initial_state = tetris.get_state()
+        initial_prev_holes = self.prev_holes
+        initial_curriculum_remaining = self.curriculum_pieces_remaining
+        initial_curriculum_solution = self.curriculum_solution.copy()
+        transitions = []
+
+        valid_actions = self.get_valid_actions()
+        try:
+            for action in valid_actions:
+                # set_state shares its arrays, so clone the snapshot again for
+                # each branch before calling a mutating environment step.
+                tetris.set_state(initial_state)
+                tetris.set_state(tetris.get_state())
+                self.prev_holes = initial_prev_holes
+                self.curriculum_pieces_remaining = initial_curriculum_remaining
+                self.curriculum_solution = initial_curriculum_solution.copy()
+
+                next_obs, reward, terminated, truncated, _ = self.step(action)
+                done = terminated or truncated
+                transitions.append((action, reward, next_obs, done))
+        finally:
+            tetris.set_state(initial_state)
+            self.prev_holes = initial_prev_holes
+            self.curriculum_pieces_remaining = initial_curriculum_remaining
+            self.curriculum_solution = initial_curriculum_solution
+
+        return transitions
+
     def get_action_space(self):
         return self.macro_action_space
 

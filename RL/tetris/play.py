@@ -5,10 +5,10 @@ import cv2
 import numpy as np
 import torch
 from env import Env
-from model import TetrisDQN
+from model import TetrisAfterstateValue
 
 
-CHECKPOINT_PATH = Path(__file__).resolve().parent / "tetris_checkpoint.pt"
+CHECKPOINT_PATH = Path(__file__).resolve().parent / "tetris_afterstate_checkpoint.pt"
 STEP_DELAY_SECONDS = 0.15
 
 
@@ -18,18 +18,14 @@ if __name__ == "__main__":
 
     gym = Env(render_mode="human")
     observation_space = gym.get_observation_space()
-    action_space = gym.get_action_space()
     input_size = sum(
         np.prod(observation_space[key].shape)
         for key in ("board", "active_tetromino_mask", "holder", "queue")
     )
-    num_actions = action_space.n if hasattr(action_space, "n") else len(action_space)
-
-    agent = TetrisDQN(
+    agent = TetrisAfterstateValue(
         input=input_size,
         hidden=64,
-        output=num_actions,
-        learning_rate=0.01,
+        learning_rate=0.001,
         discount_factor=0.99,
     )
     checkpoint = torch.load(CHECKPOINT_PATH, weights_only=True)
@@ -44,12 +40,11 @@ if __name__ == "__main__":
 
     with torch.no_grad():
         while not done:
-            valid_actions = gym.get_valid_actions()
-            if not valid_actions:
+            candidate_outcomes = gym.simulate_all_valid_placements()
+            if not candidate_outcomes:
                 raise RuntimeError("No valid macro actions are available before the episode ended.")
-            output = agent(agent.process_obs(obs))
-            valid_action_tensor = torch.tensor(valid_actions, dtype=torch.int64)
-            action = valid_actions[torch.argmax(output[valid_action_tensor]).item()]
+            scores = agent.score_afterstates(candidate_outcomes)
+            action = candidate_outcomes[torch.argmax(scores).item()][0]
             obs, reward, terminated, truncated, _ = gym.step(action)
             episode_return += reward
             done = terminated or truncated
