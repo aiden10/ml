@@ -1,2 +1,4 @@
 __pycache__
 classifier/results/training_results.json
+gen/corpus.npy
+gen/checkpoints/
